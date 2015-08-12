@@ -103,7 +103,7 @@ def shell_nosafe_parser(path):
 
 
 def pkgbuild_parser(path, safe=False):
-    accept_list = ["pkgbase" "pkgname", "source"]
+    accept_list = ["pkgbase", "pkgname", "source"]
     accept_str = ["epoch", "pkgver", "pkgrel", "source"]
 
     if safe:
