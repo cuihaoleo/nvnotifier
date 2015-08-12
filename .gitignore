@@ -55,3 +55,6 @@ docs/_build/
 
 # PyBuilder
 target/
+
+# Trasnbin is my good tradition
+trashbin/
