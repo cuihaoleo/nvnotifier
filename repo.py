@@ -27,6 +27,7 @@ class Pac(metaclass=ABCMeta):
         self._on_local_update = []
         self._on_remote_update = []
         self._vpatch = None
+        self._nvconfig = self._raw_nvconfig = None
 
     def __getattr__(self, attr):
         if attr in self._info:
@@ -65,19 +66,30 @@ class Pac(metaclass=ABCMeta):
         return future
 
     def set_nvconfig(self, config):
-        pass
+        self._nvconfig = config
 
     def set_raw_nvconfig(self, raw_config={}):
         self._raw_nvconfig = raw_config
+
+    @property
+    def info(self):
+        ret = self._info.copy()
+        ret.update({
+            "name": self.name,
+            "local_version": str(self.local_version),
+            "remote_version": str(self.remote_version),
+        })
+        return ret
 
     @property
     def nvconfig(self):
         if self._raw_nvconfig:
             return self._raw_nvconfig
         elif self._nvconfig:
-            self._nvconfig.format(
-                self._info, name=self.name,
-                version=str(self.local_version))
+            nvconfig = {}
+            for k, v in self._nvconfig.items():
+                nvconfig[k] = v.format(**self.info)
+            return nvconfig
         else:
             raise AttributeError("Please set nvconfig first!")
 
@@ -111,7 +123,6 @@ class PacmanVersion:
     def __init__(self, s):
         m = self.regex.match(s)
         if not m:
-            print(s)
             raise ValueError("Version string cannot be parsed")
 
         epoch, ver, rel = m.groups()

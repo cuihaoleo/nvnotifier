@@ -14,6 +14,26 @@ except ImportError:
 WORKING_DIR = os.path.join(xdg_cache_home, "nvnotifier") 
 
 
+def version_patch_factory(regex_str, patch):
+    def func(pac, version):
+        regex = re.compile(regex_str)
+        match = regex.match(version)
+        ret = patch.format(**pac.info)
+
+        ret = ret.replace("$0", version)
+        for i, g in enumerate(match.groups()):
+            ret = ret.replace("$%d" % (i+1), g)
+
+        if ":" not in patch:
+            ret = "%d:" % getattr(pac.local_version, "epoch", 0) + ret
+        if "-" not in patch:
+            ret += "-%s" % getattr(pac.local_version, "rel", "0")
+
+        return ret
+
+    return func
+
+
 def main(configpath):
     config = configparser.ConfigParser()
     config.read(configpath)
@@ -45,13 +65,9 @@ def main(configpath):
         for pac in paclist:
             if regex.match(getattr(pac, skey)):
                 pac.set_raw_nvconfig(raw_nvconfig)
-
-        """if "_vpatch" in section:
-            pac.patch_version(section["_vpatch"])
-        else:
-            d = { k : section[k] for k in section if not k.startswith('_') }
-            if d:
-                pac.apply_raw_nvconfig(d)"""
+                if "_vpatch" in section:
+                    arg = section["_vpatch"].split("\n")
+                    pac.apply_version_patch(version_patch_factory(*arg))
 
     if "__default__" in config:
         default_nvconfig = dict(config["__default__"])
@@ -60,9 +76,13 @@ def main(configpath):
 
     def on_up(pac):
         if pac.remote_version > pac.local_version:
-            print("! " + pac.name)
+            c = "!"
+        elif pac.remote_version < pac.local_version:
+            c = "?"
         else:
-            print("= " + pac.name)
+            c = "="
+        print("%c %s (%s -> %s)" % \
+              (c, pac.name, pac.local_version, pac.remote_version))
 
     tasks = []
     for pac in paclist:
