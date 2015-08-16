@@ -4,14 +4,16 @@ import re
 import asyncio
 import os
 import configparser
-import repo
+import fnmatch
+from serializer import PickledData
+from repo import PKGBUILDPac
 
 try:
     from xdg.BaseDirectory import xdg_cache_home
 except ImportError:
     xdg_cache_home = os.path.expanduser("~/.config")
 
-WORKING_DIR = os.path.join(xdg_cache_home, "nvnotifier") 
+WORKING_DIR = os.path.join(xdg_cache_home, "nvnotifier")
 
 
 def version_patch_factory(regex_str, patch):
@@ -25,13 +27,25 @@ def version_patch_factory(regex_str, patch):
             ret = ret.replace("$%d" % (i+1), g)
 
         if ":" not in patch:
-            ret = "%d:" % getattr(pac.local_version, "epoch", 0) + ret
+            ret = "%d:" % pac.local_version["epoch"] + ret
         if "-" not in patch:
-            ret += "-%s" % getattr(pac.local_version, "rel", "0")
+            ret += "-%s" % pac.local_version["rel"]
 
         return ret
 
     return func
+
+
+# replace this function later
+def on_up(pac):
+    if pac.remote_version > pac.local_version:
+        c = "!"
+    elif pac.remote_version < pac.local_version:
+        c = "?"
+    else:
+        c = "="
+    print("%c %s (%s -> %s)" %
+          (c, pac.name, pac.local_version, pac.remote_version))
 
 
 def main(configpath):
@@ -39,61 +53,71 @@ def main(configpath):
     config.read(configpath)
 
     meta = config["__meta__"]
-    cache_file = os.path.join(WORKING_DIR, meta["name"])
+
+    cache_file = os.path.join(WORKING_DIR, meta["name"] + ".db")
     root = meta["root"]
-    
+    blacklist = meta.get("blacklist", "").split("\n")
+
+    with PickledData(cache_file, default={}) as D:
+        saved = D.get("paclist", [])
+
+    if "__default__" in config:
+        default_nvconfig = dict(config["__default__"])
+    else:
+        default_nvconfig = None
+
+    all_path = set()
+    for d in os.listdir(root):
+        relpath = os.path.join(d, "PKGBUILD")
+        abspath = os.path.join(root, relpath)
+
+        if os.path.isfile(abspath) and \
+           not any([fnmatch.fnmatch(relpath, pat) for pat in blacklist]):
+            all_path.add(abspath)
 
     paclist = []
-    for d in os.listdir(root):
-        dpath = os.path.join(root, d)
-        ppath = os.path.join(dpath, "PKGBUILD")
-        if os.path.isfile(ppath):
-            pac = repo.PKGBUILDPac(ppath)
+    for info in saved:
+        if info["path"] in all_path:
+            all_path.remove(info["path"])
+            pac = PKGBUILDPac(**info)
+            pac.set_nvconfig(default_nvconfig)
             paclist.append(pac)
+
+    for path in all_path:
+        pac = PKGBUILDPac(path)
+        pac.set_nvconfig(default_nvconfig)
+        paclist.append(pac)
 
     for secname in config.sections():
         section = config[secname]
 
-        if ":" not in secname:
-            continue
-
-        skey, svalue = secname.split(":", 1) 
-        regex = re.compile("^" + svalue + "$")
-        raw_nvconfig = {
+        regex = re.compile("^" + secname + "$")
+        nvconfig = {
             k: section[k] for k in section if not k.startswith("_")}
 
         for pac in paclist:
-            if regex.match(getattr(pac, skey)):
-                pac.set_raw_nvconfig(raw_nvconfig)
-                if "_vpatch" in section:
-                    arg = section["_vpatch"].split("\n")
-                    pac.apply_version_patch(version_patch_factory(*arg))
+            if regex.match(pac.name):
+                pac.set_nvconfig(nvconfig)
 
-    if "__default__" in config:
-        default_nvconfig = dict(config["__default__"])
-        for pac in paclist:
-            pac.set_nvconfig(default_nvconfig)
-
-    def on_up(pac):
-        if pac.remote_version > pac.local_version:
-            c = "!"
-        elif pac.remote_version < pac.local_version:
-            c = "?"
-        else:
-            c = "="
-        print("%c %s (%s -> %s)" % \
-              (c, pac.name, pac.local_version, pac.remote_version))
+                if "_lvpatch" in section:
+                    arg = section["_lvpatch"].split("\n")
+                    pac.lvpatch = version_patch_factory(*arg)
+                if "_rvpatch" in section:
+                    arg = section["_rvpatch"].split("\n")
+                    pac.rvpatch = version_patch_factory(*arg)
 
     tasks = []
     for pac in paclist:
-        pac.update_local_version()
+        pac.update_local()
         pac.on_remote_update(on_up)
-        task = asyncio.async(pac.async_update_remote_version())
+        task = asyncio.async(pac.async_update_remote())
         tasks.append(task)
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(asyncio.wait(tasks))
 
+    with PickledData(cache_file, default={}) as D:
+        D["paclist"] = [pac.info for pac in paclist]
 
 if __name__ == "__main__":
     import sys
