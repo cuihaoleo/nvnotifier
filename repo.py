@@ -33,6 +33,7 @@ class Pac(metaclass=ABCMeta):
         if attr in self._info:
             return self._info[attr]
         else:
+            print(self.info)
             raise AttributeError(attr)
 
     def __str__(self):
@@ -57,7 +58,16 @@ class Pac(metaclass=ABCMeta):
                 self.raw_remote_version = newver
                 runhook and self.on_remote_update()
 
-        get_version(self.name, self.nvconfig, cb)
+        # ugly work-around to deal with nvchecker vcs handler
+        old_cwd = os.getcwd()
+        if "path" in self._info:
+            os.chdir(os.path.join(os.path.dirname(self.path), ".."))
+
+        try:
+            get_version(self.name, self.nvconfig, cb)
+        finally:
+            os.chdir(old_cwd)
+
         return future
 
     @property
@@ -89,9 +99,9 @@ class Pac(metaclass=ABCMeta):
     @property
     def nvconfig(self):
         if self._nvconfig:
-            nvconfig = {}
+            nvconfig = {"oldver": None}
             for k, v in self._nvconfig.items():
-                nvconfig[k] = v.format(**self._info) if v else None
+                nvconfig[k] = v.format(**self._info) if v is not None else None
             return nvconfig
         else:
             raise AttributeError("Please set nvconfig first!")
@@ -157,11 +167,8 @@ class PKGBUILDPac(Pac):
 
     def __init__(self, path, **kwargs):
         kwargs["path"] = os.path.abspath(path)
-        if "name" not in kwargs:
-            super(PKGBUILDPac, self).__init__(name="", **kwargs)
-            self.update_local()
-        else:
-            super(PKGBUILDPac, self).__init__(**kwargs)
+        kwargs["name"] = os.path.basename(os.path.dirname(path))
+        super(PKGBUILDPac, self).__init__(**kwargs)
 
     def update_local(self):
         stat = os.stat(self.path)
@@ -171,7 +178,6 @@ class PKGBUILDPac(Pac):
             d = pkgbuild_parser(self.path)
 
             self._info["stat"] = stat
-            self._info["name"] = d.get('pkgbase', d['pkgname'][0])
             self._info["packages"] = tuple(d["pkgname"])
             self._info["sources"] = tuple(d.get('source', []))
 

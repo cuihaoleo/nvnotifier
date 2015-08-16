@@ -20,16 +20,11 @@ def version_patch_factory(regex_str, patch):
     def func(pac, version):
         regex = re.compile(regex_str)
         match = regex.match(version)
-        ret = patch.format(**pac.info)
+        ret = patch.format(**pac)
 
         ret = ret.replace("$0", version)
         for i, g in enumerate(match.groups()):
             ret = ret.replace("$%d" % (i+1), g)
-
-        if ":" not in patch:
-            ret = "%d:" % pac.local_version["epoch"] + ret
-        if "-" not in patch:
-            ret += "-%s" % pac.local_version["rel"]
 
         return ret
 
