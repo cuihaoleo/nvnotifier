@@ -16,7 +16,11 @@ except ImportError:
 WORKING_DIR = os.path.join(xdg_cache_home, "nvnotifier")
 
 
-def version_patch_factory(regex_str, patch):
+def version_patch_factory(regex_str, patch=None):
+    if patch is None:
+        patch = regex_str
+        regex_str = r".*"
+
     def func(pac, version):
         regex = re.compile(regex_str)
         match = regex.match(version)

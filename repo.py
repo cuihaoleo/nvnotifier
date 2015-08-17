@@ -6,6 +6,8 @@ from helper.pkgbuild import pkgbuild_parser
 from abc import ABCMeta, abstractmethod
 from tornado.platform.asyncio import AsyncIOMainLoop
 from pkg_resources import parse_version
+from time import strftime, gmtime
+import time
 import asyncio
 
 # Tell Tornado to use the asyncio eventloop
@@ -20,8 +22,13 @@ class Pac(metaclass=ABCMeta):
         # variables that are safe to be serialized
         self.raw_local_version = kwargs.pop("raw_local_version", None)
         self.raw_remote_version = kwargs.pop("raw_remote_version", None)
+
         self._info = kwargs
-        self._info["name"] = name
+        self._info.update({
+            "name": name,
+            "local_timestamp": 0,
+            "remote_timestamp": 0,
+        })
 
         # don't serialize these (though nvconfig should be safe)
         self._on_local_update = []
@@ -33,7 +40,6 @@ class Pac(metaclass=ABCMeta):
         if attr in self._info:
             return self._info[attr]
         else:
-            print(self.info)
             raise AttributeError(attr)
 
     def __str__(self):
@@ -113,6 +119,7 @@ class Pac(metaclass=ABCMeta):
         if func:
             self._on_local_update.append(func)
         else:
+            self._info["local_timestamp"] = strftime("%Y%m%d", gmtime())
             for f in self._on_local_update:
                 f(self)
 
@@ -120,6 +127,7 @@ class Pac(metaclass=ABCMeta):
         if func:
             self._on_remote_update.append(func)
         else:
+            self._info["remote_timestamp"] = strftime("%Y%m%d", gmtime())
             for f in self._on_remote_update:
                 f(self)
 
