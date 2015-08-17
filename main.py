@@ -6,6 +6,9 @@ import os
 import configparser
 import fnmatch
 import time
+import operator
+from collections import OrderedDict
+from types import SimpleNamespace
 from serializer import PickledData
 from repo import PKGBUILDPac
 
@@ -36,44 +39,45 @@ def version_patch_factory(regex_str, patch=None):
     return func
 
 
-# replace this function later
-def on_up(pac):
-    if pac.remote_version > pac.local_version:
-        c = "!"
-    elif pac.remote_version < pac.local_version:
-        c = "?"
-    else:
-        c = "="
-    print("%c %s (%s -> %s)" %
-          (c, pac.name, pac.local_version, pac.remote_version))
-
-
-def main(configpath):
+def load_config(configpath):
     config = configparser.ConfigParser()
     config.read(configpath)
 
-    meta = config["__meta__"]
+    rec = SimpleNamespace(
+        meta=dict(config["meta"]),
+        pkg=OrderedDict(),
+        notifier=OrderedDict(),
+    )
 
-    cache_file = os.path.join(WORKING_DIR, meta["name"] + ".db")
-    root = meta["root"]
-    blacklist = meta.get("blacklist", "").split("\n")
+    for sec in config.sections():
+        if ":" in sec:
+            ns, value = sec.split(":")
+            if hasattr(rec, ns):
+                getattr(rec, ns)[value] = dict(config[sec])
 
-    with PickledData(cache_file, default={}) as D:
-        saved = D.get("paclist", [])
-        outdated = D.get("outdated", {})
+    return rec
+
+
+def main(configpath):
+    C = load_config(configpath)
+
+    cache_file = os.path.join(WORKING_DIR, C.meta["name"] + ".db")
+    root = C.meta["root"]
+    blacklist = C.meta.get("blacklist", "").split("\n")
+
+    with PickledData(cache_file, default={}) as pickled:
+        saved = pickled.get("paclist", [])
+        toooonew = pickled.get("toooonew", {})
+        outdated = pickled.get("outdated", {})
 
     def on_local_update(pac):
         if pac.name in outdated:
-            outdated.remove(pac.name)
+            del outdated[pac.name]
 
     def on_remote_update(pac):
-        if pac.remote_version < pac.local_version:
+        op = getattr(operator, pac.nvconfig.get("_op", "lt"))
+        if op(pac.remote_version, pac.local_version):
             outdated[pac.name] = int(time.time())
-
-    if "__default__" in config:
-        default_nvconfig = dict(config["__default__"])
-    else:
-        default_nvconfig = None
 
     all_path = set()
     for d in os.listdir(root):
@@ -85,35 +89,27 @@ def main(configpath):
             all_path.add(abspath)
 
     paclist = []
-    for info in saved:
-        if info["path"] in all_path:
-            all_path.remove(info["path"])
-            pac = PKGBUILDPac(**info)
-            pac.set_nvconfig(default_nvconfig)
-            paclist.append(pac)
+    for info in filter(lambda e: e["path"] in all_path, saved):
+        all_path.remove(info["path"])
+        pac = PKGBUILDPac(**info)
+        paclist.append(pac)
 
     for path in all_path:
         pac = PKGBUILDPac(path)
-        pac.set_nvconfig(default_nvconfig)
         paclist.append(pac)
 
-    for secname in config.sections():
-        section = config[secname]
-
-        regex = re.compile("^" + secname + "$")
-        nvconfig = {
-            k: section[k] for k in section if not k.startswith("_")}
-
+    for pattern, conf in C.pkg.items():
+        regex = re.compile("^" + pattern + "$")
         for pac in paclist:
             if regex.match(pac.name):
-                pac.set_nvconfig(nvconfig)
-
-                if "_lvpatch" in section:
-                    arg = section["_lvpatch"].split("\n")
+                nvconfig = conf.copy()
+                if "_lvpatch" in conf:
+                    arg = nvconfig.pop("_lvpatch").split("\n")
                     pac.lvpatch = version_patch_factory(*arg)
-                if "_rvpatch" in section:
-                    arg = section["_rvpatch"].split("\n")
+                if "_rvpatch" in conf:
+                    arg = nvconfig.pop("_rvpatch").split("\n")
                     pac.rvpatch = version_patch_factory(*arg)
+                pac.set_nvconfig(conf)
 
     tasks = []
     for pac in paclist:
@@ -138,6 +134,7 @@ def main(configpath):
     with PickledData(cache_file, default={}) as D:
         D["paclist"] = [pac.info for pac in paclist]
         D["outdated"] = outdated
+
 
 if __name__ == "__main__":
     import sys
