@@ -5,13 +5,14 @@ from nvchecker.get_version import get_version
 from helper.pkgbuild import pkgbuild_parser
 from abc import ABCMeta, abstractmethod
 from tornado.platform.asyncio import AsyncIOMainLoop
+from tornado.stack_context import ExceptionStackContext
 from pkg_resources import parse_version
-from time import strftime, gmtime
 import time
 import asyncio
 
 # Tell Tornado to use the asyncio eventloop
 AsyncIOMainLoop().install()
+TIMESTAMP = int(time.time())
 
 
 class Pac(metaclass=ABCMeta):
@@ -34,7 +35,7 @@ class Pac(metaclass=ABCMeta):
         self._on_local_update = []
         self._on_remote_update = []
         self._nvconfig = None
-        self.lvpatch = self.rvpatch = lambda p, s: s 
+        self.lvpatch = self.rvpatch = lambda p, s: s
 
     def __getattr__(self, attr):
         if attr in self._info:
@@ -55,12 +56,13 @@ class Pac(metaclass=ABCMeta):
     def async_update_remote(self, runhook=True):
         future = asyncio.Future()
 
+        def handle_exception(type, value, traceback):
+            future.set_result(None)
+            raise value.with_traceback(traceback)
+
         def cb(name, newver):
             future.set_result(newver is not None)
-            if newver is None:
-                return
-
-            if newver != self.raw_remote_version:
+            if newver is not None and newver != self.raw_remote_version:
                 self.raw_remote_version = newver
                 runhook and self.on_remote_update()
 
@@ -70,7 +72,8 @@ class Pac(metaclass=ABCMeta):
             os.chdir(os.path.join(os.path.dirname(self.path), ".."))
 
         try:
-            get_version(self.name, self.nvconfig, cb)
+            with ExceptionStackContext(handle_exception):
+                get_version(self.name, self.nvconfig, cb)
         finally:
             os.chdir(old_cwd)
 
@@ -119,7 +122,7 @@ class Pac(metaclass=ABCMeta):
         if func:
             self._on_local_update.append(func)
         else:
-            self._info["local_timestamp"] = strftime("%Y%m%d", gmtime())
+            self._info["local_timestamp"] = TIMESTAMP
             for f in self._on_local_update:
                 f(self)
 
@@ -127,7 +130,7 @@ class Pac(metaclass=ABCMeta):
         if func:
             self._on_remote_update.append(func)
         else:
-            self._info["remote_timestamp"] = strftime("%Y%m%d", gmtime())
+            self._info["remote_timestamp"] = TIMESTAMP
             for f in self._on_remote_update:
                 f(self)
 
@@ -144,7 +147,7 @@ class PacmanVersion:
         epoch, ver, rel = m.groups()
         self.epoch = int(epoch) if epoch is not None else None
         self.ver = parse_version(ver)
-        self.rel = parse_version(rel) if rel else None 
+        self.rel = parse_version(rel) if rel else None
 
     def __str__(self):
         return "{}:{}-{}".format(self.epoch, self.ver, self.rel)

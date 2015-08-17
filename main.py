@@ -5,6 +5,7 @@ import asyncio
 import os
 import configparser
 import fnmatch
+import time
 from serializer import PickledData
 from repo import PKGBUILDPac
 
@@ -59,6 +60,15 @@ def main(configpath):
 
     with PickledData(cache_file, default={}) as D:
         saved = D.get("paclist", [])
+        outdated = D.get("outdated", {})
+
+    def on_local_update(pac):
+        if pac.name in outdated:
+            outdated.remove(pac.name)
+
+    def on_remote_update(pac):
+        if pac.remote_version < pac.local_version:
+            outdated[pac.name] = int(time.time())
 
     if "__default__" in config:
         default_nvconfig = dict(config["__default__"])
@@ -107,16 +117,27 @@ def main(configpath):
 
     tasks = []
     for pac in paclist:
+        pac.on_local_update(on_local_update)
+        pac.on_remote_update(on_remote_update)
         pac.update_local()
-        pac.on_remote_update(on_up)
         task = asyncio.async(pac.async_update_remote())
         tasks.append(task)
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(asyncio.wait(tasks))
 
+    now = int(time.time())
+    print("=== OUTDATED STATUS ===")
+    for pac in paclist:
+        if pac.name in outdated:
+            print("{name} outdated for {time} hrs (L: {lv}, R: {rv})".format(
+                    name=pac.name,
+                    time=(now-outdated[pac.name]) // 3600,
+                    lv=pac.local_version, rv=pac.remote_version))
+
     with PickledData(cache_file, default={}) as D:
         D["paclist"] = [pac.info for pac in paclist]
+        D["outdated"] = outdated
 
 if __name__ == "__main__":
     import sys
