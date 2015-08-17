@@ -7,8 +7,11 @@ import configparser
 import fnmatch
 import time
 import operator
+import logging
 from collections import OrderedDict
 from types import SimpleNamespace
+
+import nicelogger
 from serializer import PickledData
 from repo import PKGBUILDPac
 
@@ -17,6 +20,7 @@ try:
 except ImportError:
     xdg_cache_home = os.path.expanduser("~/.config")
 
+logger = logging.getLogger(__name__)
 WORKING_DIR = os.path.join(xdg_cache_home, "nvnotifier")
 
 
@@ -119,14 +123,16 @@ def main(configpath):
         task = asyncio.async(pac.async_update_remote())
         tasks.append(task)
 
+    logger.info("Finished checking local versions.")
     loop = asyncio.get_event_loop()
     loop.run_until_complete(asyncio.wait(tasks))
+    logger.info("Finished checking remote versions.")
 
     now = int(time.time())
-    print("=== OUTDATED STATUS ===")
     for pac in paclist:
         if pac.name in outdated:
-            print("{name} outdated for {time} hrs (L: {lv}, R: {rv})".format(
+            print("{name} outdated for {time} hrs "
+                  "(L: {lv}, R: {rv})".format(
                     name=pac.name,
                     time=(now-outdated[pac.name]) // 3600,
                     lv=pac.local_version, rv=pac.remote_version))
@@ -138,5 +144,6 @@ def main(configpath):
 
 if __name__ == "__main__":
     import sys
+    nicelogger.enable_pretty_logging("INFO")
     os.makedirs(WORKING_DIR, exist_ok=True)
     main(sys.argv[1])
