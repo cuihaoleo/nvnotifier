@@ -2,12 +2,12 @@ import re
 import os
 from functools import total_ordering
 from nvchecker.get_version import get_version
-from helper.pkgbuild import pkgbuild_parser
 from abc import ABCMeta, abstractmethod
 from tornado.platform.asyncio import AsyncIOMainLoop
 from tornado.stack_context import ExceptionStackContext
 from pkg_resources import parse_version
-from git import git_last_change
+from .helper.pkgbuild import pkgbuild_parser
+from .git import git_last_change
 import time
 import asyncio
 import logging

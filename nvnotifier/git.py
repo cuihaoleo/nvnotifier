@@ -17,7 +17,7 @@ def git_latest_commiter(path):
     except subprocess.CalledProcessError:
         return None
     else:
-        return int(output.split()[0])
+        return output.strip().decode("utf8")
 
 
 def git_last_change(path):

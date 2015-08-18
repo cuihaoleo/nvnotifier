@@ -14,7 +14,7 @@ from importlib import import_module
 
 import nicelogger
 from serializer import PickledData
-from repo import PKGBUILDPac
+from nvnotifier.repo import PKGBUILDPac
 
 try:
     from xdg.BaseDirectory import xdg_cache_home
@@ -152,8 +152,8 @@ def main(configpath):
     notifiers = {} 
     for name, conf in C.notifier.items():
         mod = import_module("notifier.%s" % name)
-        if "name" in notifier_data:
-            n = mod.Notifier(saved=notifier_data["name"], **conf)
+        if name in notifier_data:
+            n = mod.Notifier(saved=notifier_data[name], **conf)
         else:
             n = mod.Notifier(**conf)
         notifiers[name] = n

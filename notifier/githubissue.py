@@ -38,7 +38,7 @@ class Notifier:
         if outtime > self.yuz:
             return False
             
-        objhash = hash(pac._info.values())
+        objhash = pac.info
         if self.record.get(pac.name) == objhash:
             logger.info("%s has been marked out-of-date in GitHub" 
                         % pac.name)

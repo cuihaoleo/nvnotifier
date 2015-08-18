@@ -2,7 +2,7 @@ import time
 from .lib import convert_timeout_to_second
 
 class Notifier:
-    def __init__(self, timeout="0s"):
+    def __init__(self, timeout="0s", **kwargs):
         timeout = convert_timeout_to_second(timeout)
         self.yuz = int(time.time()) - int(timeout if timeout else 0)
     def send(self, pac, outtime):
