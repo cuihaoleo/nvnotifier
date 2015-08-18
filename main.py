@@ -10,6 +10,7 @@ import operator
 import logging
 from collections import OrderedDict
 from types import SimpleNamespace
+from importlib import import_module
 
 import nicelogger
 from serializer import PickledData
@@ -71,11 +72,11 @@ def main(configpath):
 
     with PickledData(cache_file, default={}) as pickled:
         saved = pickled.get("paclist", [])
-        toooonew = pickled.get("toooonew", {})
         outdated = pickled.get("outdated", {})
 
     def on_local_update(pac):
-        if pac.name in outdated:
+        op = getattr(operator, pac.nvconfig.get("_op", "lt"))
+        if not op(pac.remote_version, pac.local_version):
             del outdated[pac.name]
 
     def on_remote_update(pac):
@@ -128,18 +129,21 @@ def main(configpath):
     loop.run_until_complete(asyncio.wait(tasks))
     logger.info("Finished checking remote versions.")
 
-    now = int(time.time())
-    for pac in paclist:
-        if pac.name in outdated:
-            print("{name} outdated for {time} hrs "
-                  "(L: {lv}, R: {rv})".format(
-                    name=pac.name,
-                    time=(now-outdated[pac.name]) // 3600,
-                    lv=pac.local_version, rv=pac.remote_version))
+    notifiers = []
+    for name, conf in C.notifier.items():
+        mod = import_module("notifier.%s" % name)
+        notifiers.append(mod.Notifier(**conf))
+
+    for pac in filter(lambda p: p.name in outdated, paclist):
+        for notifier in notifiers:
+            notifier.send(pac, outdated[pac.name])
+
+    for notifier in notifiers:
+        notifier.finish()
 
     with PickledData(cache_file, default={}) as D:
-        D["paclist"] = [pac.info for pac in paclist]
         D["outdated"] = outdated
+        D["paclist"] = [pac.info for pac in paclist]
 
 
 if __name__ == "__main__":
