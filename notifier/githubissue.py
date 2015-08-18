@@ -13,11 +13,12 @@ class GitHubAPIException(Exception):
     pass
 
 class Notifier:
-    def __init__(self, *args, repo, user, token, timeout, **kwargs):
+    def __init__(self, *args, repo, user, token, timeout, saved={}, **kwargs):
         timeout = convert_timeout_to_second(timeout)
         self.yuz = int(time.time()) - int(timeout if timeout else 0)
         self.repo = repo
         self.auth = HTTPBasicAuth(user, token)
+        self.record = saved.copy()
 
         url = urljoin(GITHUB_API_BASE, "repos/%s/issues?state=open" % repo)
         req = requests.get(url, auth=self.auth)
@@ -36,6 +37,12 @@ class Notifier:
     def send(self, pac, outtime):
         if outtime > self.yuz:
             return False
+            
+        objhash = hash(pac._info.values())
+        if self.record.get(pac.name) == objhash:
+            logger.info("%s has been marked out-of-date in GitHub" 
+                        % pac.name)
+            return False
 
         regex = re.compile("(\s|^)%s(\s|$)" % pac.name)
         for title in self.odtitles:
@@ -53,7 +60,8 @@ class Notifier:
         req = requests.post(url, auth=self.auth, json=data)
 
         if "title" in req.json():
+            self.record[pac.name] = objhash
             return True
 
     def finish(self):
-        pass
+        return self.record

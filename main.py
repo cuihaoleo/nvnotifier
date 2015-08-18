@@ -81,6 +81,7 @@ def main(configpath):
     with PickledData(cache_file, default={}) as pickled:
         saved = pickled.get("paclist", [])
         outdated = pickled.get("outdated", {})
+        notifier_data = pickled.get("notifier_data", {})
 
     def on_local_update(pac):
         lv = pac.local_version
@@ -144,21 +145,28 @@ def main(configpath):
     loop.run_until_complete(asyncio.wait(tasks))
     logger.info("Finished checking remote versions.")
 
-    notifiers = []
-    for name, conf in C.notifier.items():
-        mod = import_module("notifier.%s" % name)
-        notifiers.append(mod.Notifier(**conf))
-
-    for pac in filter(lambda p: p.name in outdated, paclist):
-        for notifier in notifiers:
-            notifier.send(pac, outdated[pac.name])
-
-    for notifier in notifiers:
-        notifier.finish()
-
     with PickledData(cache_file, default={}) as D:
         D["outdated"] = outdated
         D["paclist"] = [pac.info for pac in paclist]
+
+    notifiers = {} 
+    for name, conf in C.notifier.items():
+        mod = import_module("notifier.%s" % name)
+        if "name" in notifier_data:
+            n = mod.Notifier(saved=notifier_data["name"], **conf)
+        else:
+            n = mod.Notifier(**conf)
+        notifiers[name] = n
+
+    for pac in filter(lambda p: p.name in outdated, paclist):
+        for notifier in notifiers.values():
+            notifier.send(pac, outdated[pac.name])
+
+    for name, notifier in notifiers.items():
+        notifier_data[name] = notifier.finish()
+
+    with PickledData(cache_file, default={}) as D:
+        D["notifier_data"] = notifier_data
 
 
 if __name__ == "__main__":

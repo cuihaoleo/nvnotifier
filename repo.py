@@ -7,6 +7,7 @@ from abc import ABCMeta, abstractmethod
 from tornado.platform.asyncio import AsyncIOMainLoop
 from tornado.stack_context import ExceptionStackContext
 from pkg_resources import parse_version
+from git import git_last_change
 import time
 import asyncio
 import logging
@@ -195,13 +196,15 @@ class PKGBUILDPac(Pac):
         super(PKGBUILDPac, self).__init__(**kwargs)
 
     def update_local(self):
-        stat = os.stat(self.path)
+        mtime = git_last_change(self.path)
+        if mtime == None:
+            mtime = int(os.stat(self.path).st_mtime)
 
-        if stat != self._info.get("stat"):
+        if mtime != self._info.get("mtime"):
             old_info = self.info
             d = pkgbuild_parser(self.path)
 
-            self._info["stat"] = stat
+            self._info["mtime"] = mtime
             self._info["packages"] = tuple(d["pkgname"])
             self._info["sources"] = tuple(d.get('source', []))
 
