@@ -12,7 +12,7 @@ from collections import OrderedDict
 from types import SimpleNamespace
 from importlib import import_module
 
-import nicelogger
+import nvchecker.lib.nicelogger as nicelogger
 from serializer import PickledData
 from nvnotifier.repo import PKGBUILDPac
 
