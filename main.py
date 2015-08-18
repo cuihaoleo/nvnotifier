@@ -22,6 +22,8 @@ except ImportError:
     xdg_cache_home = os.path.expanduser("~/.config")
 
 logger = logging.getLogger(__name__)
+logging.getLogger("requests").setLevel(logging.WARNING)
+logging.getLogger("tornado").setLevel(logging.WARNING)
 WORKING_DIR = os.path.join(xdg_cache_home, "nvnotifier")
 
 
@@ -30,10 +32,14 @@ def version_patch_factory(regex_str, patch=None):
         patch = regex_str
         regex_str = r".*"
 
-    def func(pac, version):
+    def func(pacinfo, version):
+        ret = patch.format(**pacinfo)
         regex = re.compile(regex_str)
         match = regex.match(version)
-        ret = patch.format(**pac)
+
+        if not match:
+            logger.error("Failed to patch version for %s" % pacinfo["name"])
+            return None
 
         ret = ret.replace("$0", version)
         for i, g in enumerate(match.groups()):
@@ -66,32 +72,41 @@ def load_config(configpath):
 def main(configpath):
     C = load_config(configpath)
 
+    nicelogger.enable_pretty_logging(C.meta.get("log", "INFO").upper())
     cache_file = os.path.join(WORKING_DIR, C.meta["name"] + ".db")
     root = C.meta["root"]
-    blacklist = C.meta.get("blacklist", "").split("\n")
+    blacklist = [re.compile("^"+s+"$") \
+                 for s in C.meta.get("blacklist", "").split("\n")]
 
     with PickledData(cache_file, default={}) as pickled:
         saved = pickled.get("paclist", [])
         outdated = pickled.get("outdated", {})
 
     def on_local_update(pac):
+        lv = pac.local_version
+        rv = pac.remote_version
         op = getattr(operator, pac.nvconfig.get("_op", "lt"))
-        if not op(pac.remote_version, pac.local_version):
-            del outdated[pac.name]
+        if rv is None or lv is None or not op(rv, lv):
+            outdated.pop(pac.name, None)
 
     def on_remote_update(pac):
-        op = getattr(operator, pac.nvconfig.get("_op", "lt"))
-        if op(pac.remote_version, pac.local_version):
-            outdated[pac.name] = int(time.time())
+        lv = pac.local_version
+        rv = pac.remote_version
+        if lv is not None and rv is not None:
+            op = getattr(operator, pac.nvconfig.get("_op", "lt"))
+            if op(rv, lv):
+                outdated[pac.name] = int(time.time())
 
     all_path = set()
     for d in os.listdir(root):
         relpath = os.path.join(d, "PKGBUILD")
         abspath = os.path.join(root, relpath)
 
-        if os.path.isfile(abspath) and \
-           not any([fnmatch.fnmatch(relpath, pat) for pat in blacklist]):
-            all_path.add(abspath)
+        if os.path.isfile(abspath):
+            if any([p.match(d) for p in blacklist]):
+                logger.debug("%s is in blacklist" % d)
+            else:
+                all_path.add(abspath)
 
     paclist = []
     for info in filter(lambda e: e["path"] in all_path, saved):
@@ -148,6 +163,5 @@ def main(configpath):
 
 if __name__ == "__main__":
     import sys
-    nicelogger.enable_pretty_logging("INFO")
     os.makedirs(WORKING_DIR, exist_ok=True)
     main(sys.argv[1])

@@ -9,10 +9,14 @@ from tornado.stack_context import ExceptionStackContext
 from pkg_resources import parse_version
 import time
 import asyncio
+import logging
+
 
 # Tell Tornado to use the asyncio eventloop
 AsyncIOMainLoop().install()
+
 TIMESTAMP = int(time.time())
+logger = logging.getLogger(__name__)
 
 
 class Pac(metaclass=ABCMeta):
@@ -44,27 +48,32 @@ class Pac(metaclass=ABCMeta):
             raise AttributeError(attr)
 
     def __str__(self):
-        return "%s <LOCAL: %s> <REMOTE: %s>" % \
+        return "%s <L: %s> <R: %s>" % \
                 (self.name, self.local_version, self.remote_version)
 
     @abstractmethod
-    def update_local(self, runhook=True):
+    def update_local(self):
         old_info = self.info
-        self.info != old_info and self.on_local_update()
+        if self.info != old_info:
+            self.on_local_update()
 
     @asyncio.coroutine
-    def async_update_remote(self, runhook=True):
+    def async_update_remote(self):
         future = asyncio.Future()
 
         def handle_exception(type, value, traceback):
-            future.set_result(None)
+            future.set_result(False)
+            logger.error("nvchecker failed to get version of %s" % self)
             raise value.with_traceback(traceback)
 
         def cb(name, newver):
             future.set_result(newver is not None)
-            if newver is not None and newver != self.raw_remote_version:
+
+            if newver is None:
+                logger.error("nvchecker failed to get version of %s" % self)
+            elif newver != self.raw_remote_version:
                 self.raw_remote_version = newver
-                runhook and self.on_remote_update()
+                self.on_remote_update()
 
         # ugly work-around to deal with nvchecker vcs handler
         old_cwd = os.getcwd()
@@ -84,16 +93,18 @@ class Pac(metaclass=ABCMeta):
         if self.raw_local_version is None:
             return None
         else:
-            return self.VersionFactory(
-                self.lvpatch(self._info, self.raw_local_version))
+            patched = self.lvpatch(self._info, self.raw_local_version)
+            return self.VersionFactory(patched) \
+                    if patched is not None else None
 
     @property
     def remote_version(self):
         if self.raw_remote_version is None:
             return None
         else:
-            return self.VersionFactory(
-                self.rvpatch(self._info, self.raw_remote_version))
+            patched = self.rvpatch(self._info, self.raw_remote_version)
+            return self.VersionFactory(patched) \
+                    if patched is not None else None
 
     @property
     def info(self):
@@ -122,6 +133,7 @@ class Pac(metaclass=ABCMeta):
         if func:
             self._on_local_update.append(func)
         else:
+            logger.info("%s triggers on_local_update" % self)
             self._info["local_timestamp"] = TIMESTAMP
             for f in self._on_local_update:
                 f(self)
@@ -131,6 +143,7 @@ class Pac(metaclass=ABCMeta):
             self._on_remote_update.append(func)
         else:
             self._info["remote_timestamp"] = TIMESTAMP
+            logger.info("%s triggers on_remote_update" % self)
             for f in self._on_remote_update:
                 f(self)
 

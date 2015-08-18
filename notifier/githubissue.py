@@ -39,8 +39,9 @@ class Notifier:
 
         regex = re.compile("(\s|^)%s(\s|$)" % pac.name)
         for title in self.odtitles:
-            logger.info("%s has been marked out-of-date in GitHub" % pac.name)
             if regex.search(title):
+                logger.info("%s has been marked out-of-date in GitHub" 
+                            % pac.name)
                 return False
 
         url = urljoin(GITHUB_API_BASE, "repos/%s/issues" % self.repo)
