@@ -8,6 +8,7 @@ import fnmatch
 import time
 import operator
 import logging
+import atexit
 from collections import OrderedDict
 from types import SimpleNamespace
 from importlib import import_module
@@ -131,6 +132,7 @@ def main(C):
         D.out_of_date = pickled.get("out_of_date", {})
         D.not_ready = pickled.get("not_ready", {})
 
+    # generate list of Pacs
     paclist = []
     pkgbuilds = all_pkgbuilds(root, C.meta.get("blacklist", "").split('\n'))
     repo.refresh_timestamp()
@@ -143,6 +145,7 @@ def main(C):
         pac = PKGBUILDPac(path)
         paclist.append(pac)
 
+    # apply package specific config
     for pattern, conf in C.pkg.items():
         regex = re.compile("^" + pattern + "$")
         for pac in paclist:
@@ -158,17 +161,27 @@ def main(C):
                     pac.check_od = getattr(operator, nvconfig.pop("_op"))
                 pac.set_nvconfig(nvconfig)
 
-    tasks = []
+    # async update local and remote version
+    update_local_tasks = []
+    update_remote_tasks = []
+    loop = asyncio.get_event_loop()
+
     for pac in paclist:
-        pac.update_local()
-        task = asyncio.async(pac.async_update_remote())
-        tasks.append(task)
+        t1 = loop.run_in_executor(None, pac.update_local)
+        t2 = asyncio.async(pac.async_update_remote())
+        update_local_tasks.append(t1)
+        update_remote_tasks.append(t2)
 
     logger.info("Finished checking local versions.")
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(asyncio.wait(tasks))
+    loop.run_until_complete(asyncio.wait(update_local_tasks))
+    loop.run_until_complete(asyncio.wait(update_remote_tasks))
     logger.info("Finished checking remote versions.")
 
+    # save point
+    with PickledData(cache_file, default={}) as pickled:
+        pickled["paclist"] = [pac.info for pac in paclist]
+
+    # search for out-of-date Pacs and Pacs with incomplete version record
     not_ready = {}
     out_of_date = {}
     for pac in paclist:
@@ -185,13 +198,34 @@ def main(C):
         elif pac.out_of_date:
             out_of_date[pac.name] = D.out_of_date.get(pac.name, repo.TIMESTAMP)
 
+    # save point
     with PickledData(cache_file, default={}) as pickled:
         D.notifier_data = pickled.get("notifier_data", {})
         pickled["out_of_date"] = out_of_date
         pickled["not_ready"] = not_ready
-        pickled["paclist"] = [pac.info for pac in paclist]
 
     notifiers = init_notifiers(C.notifier, D.notifier_data)
+
+    # last save point: when I crash, save notifier_data as well
+    # ensure that user's mailbox won't be flood
+    def save_notifier_data():
+        notifier_data = D.notifier_data
+        for name, notifier in notifiers.items():
+            try:
+                notifier_data[name] = notifier.finish()
+            except Exception as exp:
+                logger.error("Notifier %s failed to produce notifier_data (%s)"
+                             % (name, exp))
+
+        with PickledData(cache_file, default={}) as pickled:
+            pickled["notifier_data"] = notifier_data
+
+        logger.debug("Finish saving notifier_data")
+
+    import atexit
+    atexit.register(save_notifier_data)
+
+    # send out-of-date Pacs to notifiers
     for pac in filter(lambda p: p.name in out_of_date, paclist):
         for name, notifier in notifiers.items():
             try:
@@ -199,13 +233,6 @@ def main(C):
             except Exception as exp:
                 logger.error("Failed to send notification of %s "
                              "via Notifier %s (%s)" % (pac, name, exp))
-
-    notifier_data = D.notifier_data
-    for name, notifier in notifiers.items():
-        notifier_data[name] = notifier.finish()
-
-    with PickledData(cache_file, default={}) as pickled:
-        pickled["notifier_data"] = notifier_data
 
 
 if __name__ == "__main__":
