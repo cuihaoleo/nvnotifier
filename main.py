@@ -4,8 +4,6 @@ import re
 import asyncio
 import os
 import configparser
-import fnmatch
-import time
 import operator
 import logging
 import atexit
@@ -30,7 +28,10 @@ logging.getLogger("nvchecker").setLevel(logging.ERROR)
 WORKING_DIR = os.path.join(xdg_cache_home, "nvnotifier")
 
 
-def version_patch_factory(regex_str, patch=None):
+def version_patch_factory(regex_str=None, patch=None):
+    if regex_str is None and patch is None:
+        return None
+
     if patch is None:
         patch = regex_str
         regex_str = r".*"
@@ -63,7 +64,7 @@ def load_config(configpath):
 
     rec = SimpleNamespace(
         meta=dict(config["meta"] if "meta" in config.sections() else {}),
-        pkg=OrderedDict(), notifier=OrderedDict(),
+        pkg=OrderedDict(), notifier=OrderedDict(), path=configpath,
     )
 
     for sec in config.sections():
@@ -93,7 +94,7 @@ def all_pkgbuilds(root, blacklist=[]):
 
 
 def init_notifiers(conf, saved):
-    notifiers = {} 
+    notifiers = {}
     for name, conf in conf.items():
         try:
             mod = import_module("notifier.%s" % name)
@@ -121,9 +122,31 @@ def predicate(a, b):
         return '?'
 
 
+def apply_config(pac, conf):
+    nvconfig = conf.copy()
+
+    try:
+        arg = nvconfig.pop("_lvpatch").split("\n")
+    except KeyError:
+        arg = []
+    finally:
+        pac.lvpatch = version_patch_factory(*arg)
+
+    try:
+        arg = nvconfig.pop("_rvpatch").split("\n")
+    except KeyError:
+        arg = []
+    finally:
+        pac.rvpatch = version_patch_factory(*arg)
+
+    pac.check_od = getattr(operator, nvconfig.pop("_op", ":3"), None)
+    pac.set_nvconfig(nvconfig)
+
+
 def main(C):
     cache_file = os.path.join(WORKING_DIR, C.meta["name"] + ".db")
-    root = C.meta["root"]
+    root = os.path.abspath(
+                os.path.join(os.path.dirname(C.path), C.meta["root"]))
 
     # load saved session data
     D = SimpleNamespace()
@@ -150,16 +173,7 @@ def main(C):
         regex = re.compile("^" + pattern + "$")
         for pac in paclist:
             if regex.match(pac.name):
-                nvconfig = conf.copy()
-                if "_lvpatch" in conf:
-                    arg = nvconfig.pop("_lvpatch").split("\n")
-                    pac.lvpatch = version_patch_factory(*arg)
-                if "_rvpatch" in conf:
-                    arg = nvconfig.pop("_rvpatch").split("\n")
-                    pac.rvpatch = version_patch_factory(*arg)
-                if "_op" in conf:
-                    pac.check_od = getattr(operator, nvconfig.pop("_op"))
-                pac.set_nvconfig(nvconfig)
+                apply_config(pac, conf)
 
     # async update local and remote version
     update_local_tasks = []
@@ -172,8 +186,8 @@ def main(C):
         update_local_tasks.append(t1)
         update_remote_tasks.append(t2)
 
-    logger.info("Finished checking local versions.")
     loop.run_until_complete(asyncio.wait(update_local_tasks))
+    logger.info("Finished checking local versions.")
     loop.run_until_complete(asyncio.wait(update_remote_tasks))
     logger.info("Finished checking remote versions.")
 
@@ -189,12 +203,12 @@ def main(C):
         rv = pac.remote_version
         logger.debug("{name} | {lv} ({raw_local_version}) "
                      "{pred} {rv} ({raw_remote_version})".format(
-                     lv=lv, rv=rv, pred=predicate(lv, rv), **pac.info))
+                         lv=lv, rv=rv, pred=predicate(lv, rv), **pac.info))
 
         if not pac.version_ready:
             not_ready[pac.name] = D.not_ready.get(pac.name, repo.TIMESTAMP)
             if pac.name in D.out_of_date:
-                out_of_date[pac.name] = D.out_of_date[pac.name] 
+                out_of_date[pac.name] = D.out_of_date[pac.name]
         elif pac.out_of_date:
             out_of_date[pac.name] = D.out_of_date.get(pac.name, repo.TIMESTAMP)
 
@@ -222,7 +236,6 @@ def main(C):
 
         logger.debug("Finish saving notifier_data")
 
-    import atexit
     atexit.register(save_notifier_data)
 
     # send out-of-date Pacs to notifiers
@@ -236,7 +249,6 @@ def main(C):
 
 
 if __name__ == "__main__":
-    import sys
     import argparse
 
     os.makedirs(WORKING_DIR, exist_ok=True)

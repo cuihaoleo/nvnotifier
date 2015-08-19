@@ -39,8 +39,8 @@ class Pac(metaclass=ABCMeta):
         self._info = kwargs
         self._info.update({
             "name": name,
-            "local_timestamp": 0,
-            "remote_timestamp": 0,
+            "local_timestamp": TIMESTAMP,
+            "remote_timestamp": TIMESTAMP,
         })
 
         # don't serialize these (though nvconfig should be safe)
@@ -102,15 +102,18 @@ class Pac(metaclass=ABCMeta):
         if self.raw_local_version is None:
             return None
         else:
+            if not self.lvpatch:
+                self.lvpatch = lambda p, s: s
             patched = self.lvpatch(self._info, self.raw_local_version)
-            return self.VersionFactory(patched) \
-                    if patched is not None else None
+            return self.VersionFactory(patched) if patched is not None else None
 
     @property
     def remote_version(self):
         if self.raw_remote_version is None:
             return None
         else:
+            if not self.rvpatch:
+                self.rvpatch = lambda p, s: s
             patched = self.rvpatch(self._info, self.raw_remote_version)
             return self.VersionFactory(patched) \
                     if patched is not None else None
@@ -141,6 +144,8 @@ class Pac(metaclass=ABCMeta):
 
     @property
     def out_of_date(self):
+        if self.check_od is None:
+            self.check_od = operator.lt
         return bool(self.check_od(self.local_version, self.remote_version))
 
     def set_nvconfig(self, config):
