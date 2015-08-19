@@ -101,7 +101,7 @@ def init_notifiers(conf, saved):
             else:
                 n = mod.Notifier(**conf)
         except Exception as exp:
-            logger.error("Failed to initialize Notifier %s" % name)
+            logger.error("Failed to initialize Notifier %s (%s)" % (name, exp))
         else:
             notifiers[name] = n
 
@@ -130,7 +130,6 @@ def main(C):
         D.paclist = pickled.get("paclist", [])
         D.out_of_date = pickled.get("out_of_date", {})
         D.not_ready = pickled.get("not_ready", {})
-        D.notifier_data = pickled.get("notifier_data", {})
 
     paclist = []
     pkgbuilds = all_pkgbuilds(root, C.meta.get("blacklist", "").split('\n'))
@@ -187,6 +186,7 @@ def main(C):
             out_of_date[pac.name] = D.out_of_date.get(pac.name, repo.TIMESTAMP)
 
     with PickledData(cache_file, default={}) as pickled:
+        D.notifier_data = pickled.get("notifier_data", {})
         pickled["out_of_date"] = out_of_date
         pickled["not_ready"] = not_ready
         pickled["paclist"] = [pac.info for pac in paclist]
@@ -198,7 +198,7 @@ def main(C):
                 notifier.send(pac, out_of_date[pac.name])
             except Exception as exp:
                 logger.error("Failed to send notification of %s "
-                             "via Notifier %s" % (pac, name))
+                             "via Notifier %s (%s)" % (pac, name, exp))
 
     notifier_data = D.notifier_data
     for name, notifier in notifiers.items():
