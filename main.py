@@ -156,8 +156,8 @@ def main(C):
                     arg = nvconfig.pop("_rvpatch").split("\n")
                     pac.rvpatch = version_patch_factory(*arg)
                 if "_op" in conf:
-                    pac.check_od = getattr(operator, conf["_op"])
-                pac.set_nvconfig(conf)
+                    pac.check_od = getattr(operator, nvconfig.pop("_op"))
+                pac.set_nvconfig(nvconfig)
 
     tasks = []
     for pac in paclist:
