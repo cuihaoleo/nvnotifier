@@ -1,6 +1,7 @@
 import subprocess
 import fnmatch
 import os
+import datetime
 
 
 def git_first_commit(repodir):
@@ -26,10 +27,11 @@ def git_last_change(path):
 
     try:
         output = subprocess.check_output(cmd)
-    except subprocess.CalledProcessError:
+        epoch = int(output.split()[0])
+    except (subprocess.CalledProcessError, IndexError, ValueError):
         return None
     else:
-        return output.strip()
+        return datetime.datetime.fromtimestamp(epoch)
 
 
 def git_diff_from_head(repodir, commit, filter=None):

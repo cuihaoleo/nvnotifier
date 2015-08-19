@@ -9,6 +9,7 @@ from pkg_resources import parse_version
 from .helper.pkgbuild import pkgbuild_parser
 from .git import git_last_change
 import time
+import datetime
 import asyncio
 import operator
 import logging
@@ -17,13 +18,13 @@ import logging
 # Tell Tornado to use the asyncio eventloop
 AsyncIOMainLoop().install()
 
-TIMESTAMP = int(time.time())
+TIMESTAMP = datetime.datetime.now()
 logger = logging.getLogger(__name__)
 
 
 def refresh_timestamp():
     global TIMESTAMP
-    TIMESTAMP = int(time.time())
+    TIMESTAMP = datetime.datetime.now()
 
 
 class Pac(metaclass=ABCMeta):
@@ -219,7 +220,8 @@ class PKGBUILDPac(Pac):
     def update_local(self):
         mtime = git_last_change(self.path)
         if mtime == None:
-            mtime = int(os.stat(self.path).st_mtime)
+            stat = os.stat(self.path)
+            mtime = datetime.datetime.fromtimestamp(stat.st_mtime)
 
         if mtime != self._info.get("mtime"):
             old_info = self.info

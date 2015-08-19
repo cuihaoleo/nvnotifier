@@ -53,7 +53,7 @@ def version_patch_factory(regex_str, patch=None):
 
 
 def load_config(configpath):
-    config = configparser.ConfigParser()
+    config = configparser.RawConfigParser()
 
     try:
         config.read(configpath)
