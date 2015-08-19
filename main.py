@@ -14,6 +14,7 @@ from importlib import import_module
 
 import nvchecker.lib.nicelogger as nicelogger
 from serializer import PickledData
+import nvnotifier.repo as repo
 from nvnotifier.repo import PKGBUILDPac
 
 try:
@@ -24,6 +25,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("tornado").setLevel(logging.WARNING)
+logging.getLogger("nvchecker").setLevel(logging.ERROR)
 WORKING_DIR = os.path.join(xdg_cache_home, "nvnotifier")
 
 
@@ -52,12 +54,15 @@ def version_patch_factory(regex_str, patch=None):
 
 def load_config(configpath):
     config = configparser.ConfigParser()
-    config.read(configpath)
+
+    try:
+        config.read(configpath)
+    except configparser.Error:
+        raise argparse.ArgumentTypeError("config invalid")
 
     rec = SimpleNamespace(
-        meta=dict(config["meta"]),
-        pkg=OrderedDict(),
-        notifier=OrderedDict(),
+        meta=dict(config["meta"] if "meta" in config.sections() else {}),
+        pkg=OrderedDict(), notifier=OrderedDict(),
     )
 
     for sec in config.sections():
@@ -69,53 +74,73 @@ def load_config(configpath):
     return rec
 
 
-def main(configpath):
-    C = load_config(configpath)
-
-    nicelogger.enable_pretty_logging(C.meta.get("log", "INFO").upper())
-    cache_file = os.path.join(WORKING_DIR, C.meta["name"] + ".db")
-    root = C.meta["root"]
-    blacklist = [re.compile("^"+s+"$") \
-                 for s in C.meta.get("blacklist", "").split("\n")]
-
-    with PickledData(cache_file, default={}) as pickled:
-        saved = pickled.get("paclist", [])
-        outdated = pickled.get("outdated", {})
-        notifier_data = pickled.get("notifier_data", {})
-
-    def on_local_update(pac):
-        lv = pac.local_version
-        rv = pac.remote_version
-        op = getattr(operator, pac.nvconfig.get("_op", "lt"))
-        if rv is None or lv is None or not op(rv, lv):
-            outdated.pop(pac.name, None)
-
-    def on_remote_update(pac):
-        lv = pac.local_version
-        rv = pac.remote_version
-        if lv is not None and rv is not None:
-            op = getattr(operator, pac.nvconfig.get("_op", "lt"))
-            if op(rv, lv):
-                outdated[pac.name] = int(time.time())
-
+def all_pkgbuilds(root, blacklist=[]):
     all_path = set()
+    pattern_list = [re.compile("^%s$" % p) for p in blacklist]
+
     for d in os.listdir(root):
         relpath = os.path.join(d, "PKGBUILD")
         abspath = os.path.join(root, relpath)
 
         if os.path.isfile(abspath):
-            if any([p.match(d) for p in blacklist]):
+            if any([p.match(d) for p in pattern_list]):
                 logger.debug("%s is in blacklist" % d)
             else:
                 all_path.add(abspath)
 
+    return all_path
+
+
+def init_notifiers(conf, saved):
+    notifiers = {} 
+    for name, conf in conf.items():
+        try:
+            mod = import_module("notifier.%s" % name)
+            if name in saved:
+                n = mod.Notifier(saved=saved[name], **conf)
+            else:
+                n = mod.Notifier(**conf)
+        except Exception as exp:
+            logger.error("Failed to initialize Notifier %s" % name)
+        else:
+            notifiers[name] = n
+
+    return notifiers
+
+
+def predicate(a, b):
+    try:
+        if a == b:
+            return '='
+        elif a > b:
+            return '>'
+        elif a < b:
+            return '<'
+    except TypeError:
+        return '?'
+
+
+def main(C):
+    cache_file = os.path.join(WORKING_DIR, C.meta["name"] + ".db")
+    root = C.meta["root"]
+
+    # load saved session data
+    D = SimpleNamespace()
+    with PickledData(cache_file, default={}) as pickled:
+        D.paclist = pickled.get("paclist", [])
+        D.out_of_date = pickled.get("out_of_date", {})
+        D.not_ready = pickled.get("not_ready", {})
+        D.notifier_data = pickled.get("notifier_data", {})
+
     paclist = []
-    for info in filter(lambda e: e["path"] in all_path, saved):
-        all_path.remove(info["path"])
+    pkgbuilds = all_pkgbuilds(root, C.meta.get("blacklist", "").split('\n'))
+    repo.refresh_timestamp()
+    for info in filter(lambda e: e["path"] in pkgbuilds, D.paclist):
+        pkgbuilds.remove(info["path"])
         pac = PKGBUILDPac(**info)
         paclist.append(pac)
 
-    for path in all_path:
+    for path in pkgbuilds:
         pac = PKGBUILDPac(path)
         paclist.append(pac)
 
@@ -130,12 +155,12 @@ def main(configpath):
                 if "_rvpatch" in conf:
                     arg = nvconfig.pop("_rvpatch").split("\n")
                     pac.rvpatch = version_patch_factory(*arg)
+                if "_op" in conf:
+                    pac.check_od = getattr(operator, conf["_op"])
                 pac.set_nvconfig(conf)
 
     tasks = []
     for pac in paclist:
-        pac.on_local_update(on_local_update)
-        pac.on_remote_update(on_remote_update)
         pac.update_local()
         task = asyncio.async(pac.async_update_remote())
         tasks.append(task)
@@ -145,31 +170,57 @@ def main(configpath):
     loop.run_until_complete(asyncio.wait(tasks))
     logger.info("Finished checking remote versions.")
 
-    with PickledData(cache_file, default={}) as D:
-        D["outdated"] = outdated
-        D["paclist"] = [pac.info for pac in paclist]
+    not_ready = {}
+    out_of_date = {}
+    for pac in paclist:
+        lv = pac.local_version
+        rv = pac.remote_version
+        logger.debug("{name} | {lv} ({raw_local_version}) "
+                     "{pred} {rv} ({raw_remote_version})".format(
+                     lv=lv, rv=rv, pred=predicate(lv, rv), **pac.info))
 
-    notifiers = {} 
-    for name, conf in C.notifier.items():
-        mod = import_module("notifier.%s" % name)
-        if name in notifier_data:
-            n = mod.Notifier(saved=notifier_data[name], **conf)
-        else:
-            n = mod.Notifier(**conf)
-        notifiers[name] = n
+        if not pac.version_ready:
+            not_ready[pac.name] = D.not_ready.get(pac.name, repo.TIMESTAMP)
+            if pac.name in D.out_of_date:
+                out_of_date[pac.name] = D.out_of_date[pac.name] 
+        elif pac.out_of_date:
+            out_of_date[pac.name] = D.out_of_date.get(pac.name, repo.TIMESTAMP)
 
-    for pac in filter(lambda p: p.name in outdated, paclist):
-        for notifier in notifiers.values():
-            notifier.send(pac, outdated[pac.name])
+    with PickledData(cache_file, default={}) as pickled:
+        pickled["out_of_date"] = out_of_date
+        pickled["not_ready"] = not_ready
+        pickled["paclist"] = [pac.info for pac in paclist]
 
+    notifiers = init_notifiers(C.notifier, D.notifier_data)
+    for pac in filter(lambda p: p.name in out_of_date, paclist):
+        for name, notifier in notifiers.items():
+            try:
+                notifier.send(pac, out_of_date[pac.name])
+            except Exception as exp:
+                logger.error("Failed to send notification of %s "
+                             "via Notifier %s" % (pac, name))
+
+    notifier_data = D.notifier_data
     for name, notifier in notifiers.items():
         notifier_data[name] = notifier.finish()
 
-    with PickledData(cache_file, default={}) as D:
-        D["notifier_data"] = notifier_data
+    with PickledData(cache_file, default={}) as pickled:
+        pickled["notifier_data"] = notifier_data
 
 
 if __name__ == "__main__":
     import sys
+    import argparse
+
     os.makedirs(WORKING_DIR, exist_ok=True)
-    main(sys.argv[1])
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("config", type=load_config,
+                        help="INI format config file")
+    parser.add_argument("-v", "--verbose", action="count", default=0,
+                        help="increase output verbosity")
+
+    args = parser.parse_args()
+    nicelogger.enable_pretty_logging(
+        ["WARNING", "INFO", "DEBUG"][min(args.verbose, 2)])
+    main(args.config)

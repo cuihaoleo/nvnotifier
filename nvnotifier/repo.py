@@ -10,6 +10,7 @@ from .helper.pkgbuild import pkgbuild_parser
 from .git import git_last_change
 import time
 import asyncio
+import operator
 import logging
 
 
@@ -18,6 +19,11 @@ AsyncIOMainLoop().install()
 
 TIMESTAMP = int(time.time())
 logger = logging.getLogger(__name__)
+
+
+def refresh_timestamp():
+    global TIMESTAMP
+    TIMESTAMP = int(time.time())
 
 
 class Pac(metaclass=ABCMeta):
@@ -41,6 +47,7 @@ class Pac(metaclass=ABCMeta):
         self._on_remote_update = []
         self._nvconfig = None
         self.lvpatch = self.rvpatch = lambda p, s: s
+        self.check_od = operator.lt
 
     def __getattr__(self, attr):
         if attr in self._info:
@@ -127,6 +134,14 @@ class Pac(metaclass=ABCMeta):
         else:
             raise AttributeError("Please set nvconfig first!")
 
+    @property
+    def version_ready(self):
+        return bool(self.local_version and self.remote_version)
+
+    @property
+    def out_of_date(self):
+        return bool(self.check_od(self.local_version, self.remote_version))
+
     def set_nvconfig(self, config):
         self._nvconfig = config
 
@@ -164,9 +179,12 @@ class PacmanVersion:
         self.rel = parse_version(rel) if rel else None
 
     def __str__(self):
-        return "{}:{}-{}".format(self.epoch, self.ver, self.rel)
+        return "{}:{}-{}".format(self.epoch or '*', self.ver, self.rel or '*')
 
     def __eq__(self, o):
+        if o is None:
+            raise TypeError("")
+
         v1 = [self.epoch, self.ver, self.rel]
         v2 = [o.epoch, o.ver, o.rel]
         for i in range(3):
@@ -177,6 +195,9 @@ class PacmanVersion:
         return True
 
     def __lt__(self, o):
+        if o is None:
+            raise TypeError("")
+
         v1 = [self.epoch, self.ver, self.rel]
         v2 = [o.epoch, o.ver, o.rel]
         for i in range(3):

@@ -15,10 +15,10 @@ def send_mail(host, port, sendto, sendfrom, subject, text):
     msg['To'] = sendto
     msg.preamble = text
 
-    logger.info("Send Email to %s" % sendto)
     s = smtplib.SMTP(host, port)
     s.send_message(msg)
     s.quit()
+    logger.info("Sent Email to %s" % sendto)
 
 
 class Notifier:
