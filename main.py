@@ -186,9 +186,12 @@ def main(C):
         update_local_tasks.append(t1)
         update_remote_tasks.append(t2)
 
-    loop.run_until_complete(asyncio.wait(update_local_tasks))
+    if update_local_tasks:
+        loop.run_until_complete(asyncio.wait(update_local_tasks))
     logger.info("Finished checking local versions.")
-    loop.run_until_complete(asyncio.wait(update_remote_tasks))
+
+    if update_remote_tasks:
+        loop.run_until_complete(asyncio.wait(update_remote_tasks))
     logger.info("Finished checking remote versions.")
 
     # save point
