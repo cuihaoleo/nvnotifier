@@ -143,7 +143,7 @@ def apply_config(pac, conf):
     pac.set_nvconfig(nvconfig)
 
 
-def main(C):
+def main(C, noremote=False):
     cache_file = os.path.join(WORKING_DIR, C.meta["name"] + ".db")
     root = os.path.abspath(
                 os.path.join(os.path.dirname(C.path), C.meta["root"]))
@@ -182,9 +182,10 @@ def main(C):
 
     for pac in paclist:
         t1 = loop.run_in_executor(None, pac.update_local)
-        t2 = asyncio.async(pac.async_update_remote())
         update_local_tasks.append(t1)
-        update_remote_tasks.append(t2)
+        if not noremote:
+            t2 = asyncio.async(pac.async_update_remote())
+            update_remote_tasks.append(t2)
 
     if update_local_tasks:
         loop.run_until_complete(asyncio.wait(update_local_tasks))
@@ -261,8 +262,10 @@ if __name__ == "__main__":
                         help="INI format config file")
     parser.add_argument("-v", "--verbose", action="count", default=0,
                         help="increase output verbosity")
+    parser.add_argument("-n", "--noremote", action="store_true",
+                        help="don't update remote version")
 
     args = parser.parse_args()
     nicelogger.enable_pretty_logging(
         ["WARNING", "INFO", "DEBUG"][min(args.verbose, 2)])
-    main(args.config)
+    main(args.config, noremote=args.noremote)
