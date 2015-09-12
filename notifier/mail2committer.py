@@ -71,7 +71,7 @@ class Notifier:
                 text="Local: %s\nRemote: %s" %
                      (pac.local_version, pac.remote_version))
         else:
-            logger.warning("Don't know send email to whom (%r)", pac)
+            logger.warning("Don't know send email to whom (%s)", pac)
             return False
 
         self.record[pac.name] = objhash

@@ -249,7 +249,7 @@ def main(C, noremote=False):
                 notifier.send(pac, out_of_date[pac.name])
             except Exception as exp:
                 logger.error("Failed to send notification of %s "
-                             "via Notifier %s (%s)" % (pac, name, exp))
+                             "via Notifier %s (%s)", pac, name, exp)
 
 
 if __name__ == "__main__":
