@@ -42,7 +42,7 @@ def version_patch_factory(regex_str=None, patch=None):
         match = regex.match(version)
 
         if not match:
-            logger.error("Failed to patch version for %s" % pacinfo["name"])
+            logger.error("Failed to patch version for %r", pacinfo["name"])
             return None
 
         ret = ret.replace("$0", version)
@@ -86,7 +86,7 @@ def all_pkgbuilds(root, blacklist=[]):
 
         if os.path.isfile(abspath):
             if any([p.match(d) for p in pattern_list]):
-                logger.debug("%s is in blacklist" % d)
+                logger.debug("%r is in blacklist", d)
             else:
                 all_path.add(abspath)
 
@@ -103,7 +103,7 @@ def init_notifiers(conf, saved):
             else:
                 n = mod.Notifier(**conf)
         except Exception as exp:
-            logger.error("Failed to initialize Notifier %s (%s)" % (name, exp))
+            logger.error("Failed to initialize Notifier %r (%s)", name, exp)
         else:
             notifiers[name] = n
 

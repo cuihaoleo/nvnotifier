@@ -25,7 +25,7 @@ class Notifier:
         send_notify('%s is out-of-date' % pac.name,
                     'Local: %s\nRemote: %s' % 
                     (pac.local_version, pac.remote_version))
-        logger.debug("Notify %s via desktop notification" % pac)
+        logger.debug("Notify %r via desktop notification", pac)
 
         return True
 

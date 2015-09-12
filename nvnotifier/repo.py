@@ -72,14 +72,14 @@ class Pac(metaclass=ABCMeta):
 
         def handle_exception(type, value, traceback):
             future.set_result(False)
-            logger.error("nvchecker failed to get version of %s" % self)
+            logger.error("nvchecker failed to get version of %r", self)
             raise value.with_traceback(traceback)
 
         def cb(name, newver):
             future.set_result(newver is not None)
 
             if newver is None:
-                logger.error("nvchecker failed to get version of %s" % self)
+                logger.error("nvchecker failed to get version of %r", self)
             elif newver != self.raw_remote_version:
                 self.raw_remote_version = newver
                 self.on_remote_update()
@@ -155,7 +155,7 @@ class Pac(metaclass=ABCMeta):
         if func:
             self._on_local_update.append(func)
         else:
-            logger.info("%s triggers on_local_update" % self)
+            logger.info("%r triggers on_local_update", self)
             self._info["local_timestamp"] = TIMESTAMP
             for f in self._on_local_update:
                 f(self)
@@ -165,7 +165,7 @@ class Pac(metaclass=ABCMeta):
             self._on_remote_update.append(func)
         else:
             self._info["remote_timestamp"] = TIMESTAMP
-            logger.info("%s triggers on_remote_update" % self)
+            logger.info("%r triggers on_remote_update", self)
             for f in self._on_remote_update:
                 f(self)
 

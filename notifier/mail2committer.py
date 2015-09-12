@@ -19,7 +19,7 @@ def send_mail(host, port, sender, receiver, subject, text):
     try:
         s = smtplib.SMTP(host, port)
     except ConnectionRefusedError:
-        logger.error("Cannot connect to SMTP server %s:%s" % (host, port))
+        logger.error("Cannot connect to SMTP server %s:%s", host, port)
         raise
 
     s.send_message(msg)
@@ -51,8 +51,8 @@ class Notifier:
             subject=subject,
             text=text)
 
-        logger.info("Sent Email to %s" % receiver)
-        logger.debug("Subject: %s" % subject)
+        logger.info("Sent Email to %r", receiver)
+        logger.debug("Subject: %r", subject)
 
     def send(self, pac, outtime):
         if outtime > self.deadline:
@@ -60,7 +60,7 @@ class Notifier:
 
         objhash = pac.info
         if self.record.get(pac.name) == objhash:
-            logger.info("Already sent mail to %s maintainer" % pac.name)
+            logger.info("Already sent mail to %r maintainer", pac.name)
             return False
 
         receiver = git.git_latest_committer(pac.path) or self.default_receiver
@@ -71,7 +71,7 @@ class Notifier:
                 text="Local: %s\nRemote: %s" %
                      (pac.local_version, pac.remote_version))
         else:
-            logger.warning("Don't know send email to whom (%s)" % pac)
+            logger.warning("Don't know send email to whom (%r)", pac)
             return False
 
         self.record[pac.name] = objhash

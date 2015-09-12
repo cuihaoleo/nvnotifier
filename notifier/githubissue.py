@@ -53,15 +53,14 @@ class Notifier:
 
         objhash = pac.info
         if self.record.get(pac.name) == objhash:
-            logger.info("%s has been marked out-of-date in GitHub"
-                        % pac.name)
+            logger.info("%r has been marked out-of-date in GitHub", pac.name)
             return False
 
         regex = re.compile("(\s|^)%s(\s|$)" % pac.name)
         for title in self.odtitles:
             if regex.search(title):
-                logger.info("%s has been marked out-of-date in GitHub"
-                            % pac.name)
+                logger.info("%r has been marked out-of-date in GitHub",
+                            pac.name)
                 return False
 
         url = urljoin(GITHUB_API_BASE, "repos/%s/issues" % self.repo)
@@ -73,7 +72,7 @@ class Notifier:
         req = self.session.post(url, json=data)
 
         if "title" in req.json():
-            logger.info("new issue: %s" % data["title"])
+            logger.info("new issue: %r", data["title"])
             self.record[pac.name] = objhash
             return True
 
