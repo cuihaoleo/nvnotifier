@@ -218,7 +218,7 @@ class PKGBUILDPac(Pac):
     def __init__(self, path, **kwargs):
         kwargs["path"] = os.path.abspath(path)
         kwargs["name"] = os.path.basename(os.path.dirname(path))
-        super(PKGBUILDPac, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def update_local(self):
         mtime = git_last_change(self.path)
