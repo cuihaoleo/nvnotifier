@@ -1,9 +1,7 @@
 import logging
 import datetime
-import asyncio
 import subprocess
 from .lib import convert_timeout_to_second
-import nvchecker.lib.notify as notify
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +21,7 @@ class Notifier:
             return False
 
         send_notify('%s is out-of-date' % pac.name,
-                    'Local: %s\nRemote: %s' % 
+                    'Local: %s\nRemote: %s' %
                     (pac.local_version, pac.remote_version))
         logger.debug("Notify %r via desktop notification", pac)
 

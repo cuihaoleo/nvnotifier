@@ -8,7 +8,6 @@ from tornado.stack_context import ExceptionStackContext
 from pkg_resources import parse_version
 from .helper.pkgbuild import pkgbuild_parser
 from .git import git_last_change
-import time
 import datetime
 import asyncio
 import operator
@@ -105,7 +104,7 @@ class Pac(metaclass=ABCMeta):
             if not self.lvpatch:
                 self.lvpatch = lambda p, s: s
             patched = self.lvpatch(self._info, self.raw_local_version)
-            return self.VersionFactory(patched) if patched is not None else None
+        return self.VersionFactory(patched) if patched is not None else None
 
     @property
     def remote_version(self):
@@ -115,8 +114,7 @@ class Pac(metaclass=ABCMeta):
             if not self.rvpatch:
                 self.rvpatch = lambda p, s: s
             patched = self.rvpatch(self._info, self.raw_remote_version)
-            return self.VersionFactory(patched) \
-                    if patched is not None else None
+        return self.VersionFactory(patched) if patched is not None else None
 
     @property
     def info(self):
@@ -224,7 +222,7 @@ class PKGBUILDPac(Pac):
 
     def update_local(self):
         mtime = git_last_change(self.path)
-        if mtime == None:
+        if mtime is None:
             stat = os.stat(self.path)
             mtime = datetime.datetime.fromtimestamp(stat.st_mtime)
 

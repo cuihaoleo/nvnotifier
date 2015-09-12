@@ -21,7 +21,6 @@ def remove_comments(string):
     return regex.sub(_replacer, string)
 
 
-
 def replace_shell_vars(string, d):
     if isinstance(string, str):
         s = re.sub(r"\$\{(\w+)[^{}]*\}", r'{\1}', string)

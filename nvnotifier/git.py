@@ -11,7 +11,7 @@ def git_first_commit(repodir):
 
 
 def git_latest_committer(path):
-    cmd = ["git", "-C", os.path.dirname(path), "log", "-1", 
+    cmd = ["git", "-C", os.path.dirname(path), "log", "-1",
            "--format=%ce", path]
     try:
         output = subprocess.check_output(cmd)
@@ -22,7 +22,7 @@ def git_latest_committer(path):
 
 
 def git_last_change(path):
-    cmd = ["git", "-C", os.path.dirname(path), "log", "-1", 
+    cmd = ["git", "-C", os.path.dirname(path), "log", "-1",
            "--format=%cd", "--date=raw", path]
 
     try:
@@ -37,8 +37,8 @@ def git_last_change(path):
 def git_diff_from_head(repodir, commit, filter=None):
     cmd = ["git", "-C", repodir, "diff", "--name-status", commit]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    
-    deleted = set() 
+
+    deleted = set()
     updated = set()
     new = set()
     for line in proc.stdout:
@@ -54,7 +54,7 @@ def git_diff_from_head(repodir, commit, filter=None):
                 updated.add(path)
 
     if proc.wait() != 0:
-        raise subprocess.CalledProcessError 
+        raise subprocess.CalledProcessError
 
     return {
         "D": deleted,
