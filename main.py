@@ -19,7 +19,7 @@ from nvnotifier.repo import PKGBUILDPac
 try:
     from xdg.BaseDirectory import xdg_cache_home
 except ImportError:
-    xdg_cache_home = os.path.expanduser("~/.config")
+    xdg_cache_home = os.path.expanduser("~/.cache")
 
 logger = logging.getLogger(__name__)
 logging.getLogger("requests").setLevel(logging.WARNING)
