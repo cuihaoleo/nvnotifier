@@ -10,7 +10,7 @@ def git_first_commit(repodir):
     return output.decode("utf8").strip()
 
 
-def git_latest_commiter(path):
+def git_latest_committer(path):
     cmd = ["git", "-C", os.path.dirname(path), "log", "-1", 
            "--format=%ce", path]
     try:

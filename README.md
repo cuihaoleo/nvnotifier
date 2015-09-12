@@ -112,7 +112,7 @@ GitHub OAuth token for submit issue. If you don't want to write token here, spec
 
 The repo that the notifier submit issue to.
 
-#### *mail2commiter* notifier
+#### *mail2committer* notifier
 
 This notifier will send an Email to the last committer of out-of-date PKGBUILD. (So the PKGBUILD repository must be a git repository except when **default_receiver** is set)
 

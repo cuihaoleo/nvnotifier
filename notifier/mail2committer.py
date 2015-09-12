@@ -63,7 +63,7 @@ class Notifier:
             logger.info("Already sent mail to %s maintainer" % pac.name)
             return False
 
-        receiver = git.git_latest_commiter(pac.path) or self.default_receiver
+        receiver = git.git_latest_committer(pac.path) or self.default_receiver
         if receiver:
             self.send_raw_mail(
                 receiver=receiver,
