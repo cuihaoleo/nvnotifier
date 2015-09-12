@@ -12,6 +12,7 @@ import datetime
 import asyncio
 import operator
 import logging
+import configparser
 
 
 # Tell Tornado to use the asyncio eventloop
@@ -88,9 +89,12 @@ class Pac(metaclass=ABCMeta):
         if "path" in self._info:
             os.chdir(os.path.join(os.path.dirname(self.path), ".."))
 
+        dmparser = configparser.RawConfigParser()
+        dmparser.read_dict({"_": self.nvconfig})
+
         try:
             with ExceptionStackContext(handle_exception):
-                get_version(self.name, self.nvconfig, cb)
+                get_version(self.name, dmparser["_"], cb)
         finally:
             os.chdir(old_cwd)
 
